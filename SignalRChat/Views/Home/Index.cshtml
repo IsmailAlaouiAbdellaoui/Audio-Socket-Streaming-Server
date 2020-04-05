@@ -1,0 +1,488 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <title>ASP.NET Core SignalR Stock Ticker</title>
+    @*<link href="StockTicker.css" rel="stylesheet" />*@
+    <script>
+        $(document).ready(function () {
+
+        });
+
+
+    </script>
+    <style>
+        table {
+            border: 0
+        }
+
+        .commslog-data {
+            font-family: Consolas, Courier New, Courier, monospace;
+        }
+
+        .commslog-server {
+            background-color: #d11141;
+            color: white
+        }
+
+        .commslog-client {
+            background-color: #00b159;
+            color: white
+        }
+    </style>
+</head>
+<body>
+    <h1>ASP.NET Core SignalR Stock Ticker Sample</h1>
+
+    <input type="button" id="open" value="Open Market" />
+    <input type="button" id="close" value="Close Market" disabled="disabled" />
+    <input type="button" id="reset" value="Reset" />
+
+    <h2>Live Stock Table</h2>
+    <div id="stockTable">
+        <table border="1">
+            <thead>
+                <tr><th>Symbol</th><th>Price</th><th>Open</th><th>High</th><th>Low</th><th>Change</th><th>%</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <h2>Live Stock Ticker</h2>
+    <div id="stockTicker">
+        <div class="inner">
+            <ul position="absolute"></ul>
+        </div>
+    </div>
+    <button id="test" type="button">Call Client method </button>
+    <div class="container">
+        <input type="text" id="message" />
+        <input type="button" id="sendmessage" value="Send" />
+        <ul id="discussion"></ul>
+    </div>
+
+    <audio id="audiotag" controls>
+        Your browser does not support the
+        <code>audio</code> element.
+    </audio>
+    <button id="audio_context" type="button">Create audio context </button>
+    <button id="listen_desktop" type="button">Listen to a friend's music </button>
+    <button id="stop_listen_desktop" type="button">Stop listening </button>
+
+
+    <p id="statelabel"> State label</p>
+    <h1>WebSocket Sample Application</h1>
+    <p id="stateLabel">Ready to connect...</p>
+    <div>
+        <label for="connectionUrl">WebSocket Server URL:</label>
+        <input id="connectionUrl" />
+        <button id="connectButton" type="submit">Connect</button>
+    </div>
+    <p></p>
+    <div>
+        <label for="sendMessage">Message to send:</label>
+        <input id="sendMessage" disabled />
+        <button id="sendButton" type="submit" disabled>Send</button>
+        <button id="closeButton" disabled>Close Socket</button>
+    </div>
+
+    <h2>Communication Log</h2>
+    <table style="width: 800px">
+        <thead>
+            <tr>
+                <td style="width: 100px">From</td>
+                <td style="width: 100px">To</td>
+                <td>Data</td>
+            </tr>
+        </thead>
+        <tbody id="commsLog"></tbody>
+    </table>
+    <script src="~/lib/signalr/dist/browser/signalr.js"></script>
+    @*<script src="~/lib/signalr/dist/browser/signalr-example.min.js"></script>*@
+    @*<script src="~/js/chat.js"></script>*@
+    @*<script src="~/js/stockTicker.js"></script>*@
+    <script src="~/js/codecbase64.js"></script>
+    <script src="~/js/site.js"></script>
+    <script type="text/javascript">
+
+
+        //document.addEventListener('DOMContentLoaded', function () {
+        $(document).ready(function () {
+            var audioelement = document.getElementById('audiotag');
+            //audioelement.src = encodedMsg;
+            //audioelement.src = message;
+            //audioelement.src = "http://163.172.119.118:10780/;listen.ogg";
+
+
+            function init_audio_context() {
+                if (!window.AudioContext) {
+                    if (!window.webkitAudioContext) {
+                        alert("Your browser does not support any AudioContext and cannot play back this audio.");
+                        return;
+                    }
+                    window.AudioContext = window.webkitAudioContext;
+                }
+
+                context = new AudioContext();
+            }
+
+            $('#audio_context').click(function () {
+
+                //context = new (window.AudioContext || window.webkitAudioContext)();
+                init_audio_context();
+                console.log('created audio context ...');
+
+            });
+
+            function _base64ToArrayBuffer(base64) {
+                var binary_string = window.atob(base64);
+                var len = binary_string.length;
+                var bytes = new Uint8Array(len);
+                for (var i = 0; i < len; i++) {
+                    bytes[i] = binary_string.charCodeAt(i);
+                }
+                return bytes.buffer;
+            }
+            var base64ToBuffer = function (buffer) {
+                var binary = window.atob(buffer);
+                var buffer = new ArrayBuffer(binary.length);
+                var bytes = new Uint8Array(buffer);
+                for (var i = 0; i < buffer.byteLength; i++) {
+                    bytes[i] = binary.charCodeAt(i) & 0xFF;
+                }
+                return buffer;
+            };
+
+            function playByteArray(byteArray) {
+
+                var arrayBuffer = new ArrayBuffer(byteArray.length);
+                var bufferView = new Uint8Array(arrayBuffer);
+                for (i = 0; i < byteArray.length; i++) {
+                    bufferView[i] = byteArray[i];
+                }
+
+                context.decodeAudioData(arrayBuffer, function (buffer) {
+                    buf = buffer;
+                    play();
+                });
+            }
+
+            // Play the loaded file
+            function play() {
+                // Create a source node from the buffer
+                var source = context.createBufferSource();
+                source.buffer = buf;
+                // Connect to the final output node (the speakers)
+                source.connect(context.destination);
+                // Play immediately
+                source.start(0);
+            }
+            var messageInput = document.getElementById('message');
+            // Get the user name and store it to prepend to messages.
+            var name = 'Server ';
+            // Set initial focus to message input box.
+            messageInput.focus();
+            // Start the connection.
+            var connection = new signalR.HubConnectionBuilder()
+                .withUrl('/chatHub')
+                .build();
+            // Create a function that the hub can call to broadcast messages.
+            connection.on('broadcastMessage', function (name, message) {
+                // Html encode display name and message.
+                var encodedName = name;
+                var encodedMsg = message;
+                // Add the message to the page.
+                var liElement = document.createElement('li');
+                //liElement.innerHTML = '<strong>' + encodedName + '</strong>:&nbsp;&nbsp;' + encodedMsg;
+                //document.getElementById('discussion').appendChild(liElement);
+                var audioelement = document.getElementById('audiotag');
+                //audioelement.src = encodedMsg;
+                //audioelement.src = message;
+                //audioelement.src = "http://163.172.119.118:10780/;listen.ogg";
+                console.log("raw message : " + message);
+                console.log("encoded message : " + encodedMsg);
+
+
+            });
+
+            //var b = false;
+            var context;    // Audio context
+            var buf;        // Audio buffer
+            var temp_buf = null;
+            document.getElementById('stop_listen_desktop').onclick = function () {
+                connection.invoke("stop_listen_desktop_hub");
+                console.log("stopped recording");
+                console.log("length of temp_buf : " + temp_buf.length);
+                console.log("type of temp_buff : " + typeof temp_buf);
+                var source = context.createBufferSource();
+                var blob = window.atob(temp_buf),	// Base64 string converted to a char array
+                    fLen = blob.length / Float32Array.BYTES_PER_ELEMENT,						// How many floats can be made, but be even
+                    dView = new DataView(new ArrayBuffer(Float32Array.BYTES_PER_ELEMENT)),	// ArrayBuffer/DataView to convert 4 bytes into 1 float.
+                    fAry = new Float32Array(fLen),											// Final Output at the correct size
+                    p = 0;																// Position
+
+                for (var j = 0; j < fLen; j++) {
+                    p = j * 4;
+                    dView.setUint8(0, blob.charCodeAt(p));
+                    dView.setUint8(1, blob.charCodeAt(p + 1));
+                    dView.setUint8(2, blob.charCodeAt(p + 2));
+                    dView.setUint8(3, blob.charCodeAt(p + 3));
+                    fAry[j] = dView.getFloat32(0, true);
+                }
+                //console.log(fAry)
+
+
+                //console.log("type of arraybuffer converted base64 : " + typeof fAry);
+                //test = new Float32Array(10);
+                //console.log("type of test : " + typeof test);
+                //context.decodeAudioData(test, function (buffer) {
+                //    source.buffer = buffer;
+                //    source.connect(context.destination);
+                //    //source.start(0);
+                //});
+                //console.log("first element of temp_buf : " + temp_buf[0]);
+                //var myArrayBuffer = context.createBuffer(2, context.sampleRate * 5, context.sampleRate);
+                //temp_buf = base64ToBuffer(temp_buf);
+                //temp_buf = Base64Binary.decodeArrayBuffer(temp_buf);
+                //temp_buf = window.atob(temp_buf);
+                //temp_buf = Base64Binary.decodeArrayBuffer(temp_buf);
+                //temp_;
+                //console.log("type of temp_buff : " + typeof temp_buf);
+                try {
+                    //var snd = new Audio("data:audio/wav;base64," + temp_buf);
+                    //snd.play();
+                    //var audioelement = document.getElementById('audiotag');
+                    //audioelement.src = "data:audio/mpeg;base64," + temp_buf;
+                    //context.decodeAudioData(temp_buf, function (buffer) {
+                    //    source.buffer = buffer;
+
+                    //    //source.connect(audioCtx.destination);
+                    //    //source.loop = true;
+                    //},
+
+                    //    function (e) { console.log("Error with decoding audio data : " + e.err); });
+
+                } catch (e) {
+                    console.log("error when decoding : " + e);
+                }
+
+
+            }
+            var ms;
+            var mediaSource = new MediaSource();
+            //mediaSource.addEventListener('sourceopen', callback, false);
+            document.getElementById('listen_desktop').onclick = function () {
+                //ms = new MediaSource();
+                //var audio = document.querySelector('audio');
+                //audio.src = window.URL.createObjectURL(ms);
+                //console.log("open the market");
+                //var audioelement = document.getElementById('audiotag');
+                //audioelement.src = "https://localhost:44317/";
+                init_audio_context();
+
+                console.log("created audio context !");
+                //ms.addEventListener('sourceopen', function (e) {
+
+                //    var sourceBuffer = ms.addSourceBuffer('application/octet-stream');
+                //    sourceBuffer.appendBuffer(temp_buf);
+
+                //}, false);
+                connection.invoke("listen_desktop_hub");
+
+            }
+            var bool = true;
+            var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            connection.on('stream_client', function (data) {
+                //console.log(data);
+                if (bool) {
+                    var audioelement = document.getElementById('audiotag');
+                    audioelement.src = "data:audio/wav;base64," + data;
+                    bool = false;
+                }
+                
+               
+                
+
+
+                //try {
+                //    do {
+                //        temp_buf = temp_buf + data;
+
+                //    } while (temp_buf.length < 1000000)
+                //    //console.log(temp_buf);
+                //}
+
+                //catch (e) {
+                //    console.log(e);
+                //}
+            });
+
+
+            NUM_CHUNKS = 5;
+            function callback(e) {
+                var sourceBuffer = mediaSource.addSourceBuffer('audio/wav;');
+
+                logger.log('mediaSource readyState: ' + this.readyState);
+
+
+                var file = new Blob([temp_buf], { type: 'audio/wav' });
+                var chunkSize = Math.ceil(file.size / NUM_CHUNKS);
+
+                logger.log('num chunks:' + NUM_CHUNKS);
+                logger.log('chunkSize:' + chunkSize + ', totalSize:' + file.size);
+
+                // Slice the video into NUM_CHUNKS and append each to the media element.
+                var i = 0;
+
+                (function readChunk_(i) {
+                    var reader = new FileReader();
+
+                    // Reads aren't guaranteed to finish in the same order they're started in,
+                    // so we need to read + append the next chunk after the previous reader
+                    // is done (onload is fired).
+                    reader.onload = function (e) {
+                        sourceBuffer.appendBuffer(new Uint8Array(e.target.result));
+                        logger.log('appending chunk:' + i);
+                        if (i == NUM_CHUNKS - 1) {
+                            mediaSource.endOfStream();
+                        } else {
+                            if (video.paused) {
+                                video.play(); // Start playing after 1st chunk is appended.
+                            }
+                            readChunk_(++i);
+                        }
+                    };
+
+                    var startByte = chunkSize * i;
+                    var chunk = file.slice(startByte, startByte + chunkSize);
+
+                    reader.readAsArrayBuffer(chunk);
+                })(i);  // Start the recursive call by self calling.
+
+            }
+
+
+
+
+
+            //connection.on('stream_client', function (data) {
+            //    console.log(data);
+
+            //    try {
+            //        do {
+            //            temp_buf = temp_buf + data;
+
+            //        } while (temp_buf.length < 1000000)
+            //        //console.log(temp_buf);
+            //    }
+
+            //    catch (e) {
+            //        console.log(e);
+            //    }
+
+
+            //var reader = new FileReader();
+            //reader.readAsArrayBuffer(data);
+            //console.log(reader.result);
+            //var encodedData = data;
+            //var source = null;
+            //var audioBuffer = null;
+            //console.log("raw data : " + data);
+            ////console.log("encoded data : " + encodedData);
+            ////console.log(typeof (data))
+            //data = base64ToBuffer(data)
+            //context.decodeAudioData(data, function (buffer) {
+            //    // audioBuffer is global to reuse the decoded audio later.
+            //    audioBuffer = buffer;
+
+            //}, function (e) {
+            //    console.log('Error decoding file', e);
+            //    });
+            //source = context.createBufferSource();
+            //source.buffer = audioBuffer;
+            //source.loop = false;
+            //source.connect(context.destination);
+            //source.start(0); // Play immediately.
+
+
+            //try {
+            //    //playByteArray(data);
+
+            //    //var myArrayBuffer = context.createBuffer(2, context.sampleRate * 3, context.sampleRate);
+            //}
+            //catch (error) {
+            //    console.error(error);
+            //    // expected output: ReferenceError: nonExistentFunction is not defined
+            //    // Note - error messages will vary depending on browser
+            //}
+            //// ! ! !  Uncaught (in promise) DOMException ! ! !  !
+
+            //var myArrayBuffer = context.createBuffer(2, context.sampleRate * 3, context.sampleRate);
+
+            ////// Fill the buffer with white noise;
+            ////// just random values between -1.0 and 1.0
+
+            ////console.log("data after conversion : " + data);
+
+            //for (var channel = 0; channel < 2; channel++) {
+            //    // This gives us the actual array that contains the data
+            //    var nowBuffering = myArrayBuffer.getChannelData(channel);
+            //    for (var i = 0; i < myArrayBuffer.length; i++) {
+            //    //    // Math.random() is in [0; 1.0]
+            //    //    // audio needs to be in [-1.0; 1.0]
+            //        nowBuffering[i] = data[i];//Math.random() * 2 - 1;
+            //    }
+            //    nowBuffering =  context.decodeAudioData(data);
+            //}
+
+            ////// Get an AudioBufferSourceNode.
+            ////// This is the AudioNode to use when we want to play an AudioBuffer
+            //var source = context.createBufferSource();
+
+            ////// set the buffer in the AudioBufferSourceNode
+            //source.buffer = myArrayBuffer;
+            ////source.buffer = nowBuffering;
+
+            ////// connect the AudioBufferSourceNode to the
+            ////// destination so we can hear the sound
+            //source.connect(context.destination);
+
+            //// start the source playing
+            //try {
+            //    //playByteArray(data);
+            //    source.start();
+            //    //var myArrayBuffer = context.createBuffer(2, context.sampleRate * 3, context.sampleRate);
+            //}
+            //catch (error) {
+            //    console.error(error);
+            //    // expected output: ReferenceError: nonExistentFunction is not defined
+            //    // Note - error messages will vary depending on browser
+            //}
+
+
+
+
+
+            // });
+
+
+            // Transport fallback functionality is now built into start.
+            connection.start()
+                .then(function () {
+                    console.log('connection started');
+                    document.getElementById('sendmessage').addEventListener('click', function (event) {
+                        // Call the Send method on the hub.
+                        connection.invoke('send', name, messageInput.value);
+                        // Clear text box and reset focus for next comment.
+                        messageInput.value = '';
+                        messageInput.focus();
+                        event.preventDefault();
+                    });
+                })
+                .catch(error => {
+                    console.error(error.message);
+                });
+        });
+    </script>
+</body>
+</html>
